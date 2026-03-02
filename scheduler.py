@@ -160,41 +160,48 @@ def run_schedule(
     # 優先度ソート
     prioritized = prioritize_candidates(candidates)
 
-    for clip in prioritized[:remaining]:
-        clip_id = clip.get("uuid") or clip.get("id") or ""
-        title = clip.get("title", "")
-        video_path = clip.get("local_path", "")
+    try:
+        for clip in prioritized[:remaining]:
+            clip_id = clip.get("uuid") or clip.get("id") or ""
+            title = clip.get("title", "")
+            video_path = clip.get("local_path", "")
 
-        logger.info(
-            f"処理中: {clip_id} [{clip.get('_priority', 0)}] {title[:40]}"
-        )
+            logger.info(
+                f"処理中: {clip_id} [{clip.get('_priority', 0)}] {title[:40]}"
+            )
 
-        # 投稿実行
-        result = post_to_sns(
-            clip=clip,
-            platforms=platforms,
-            video_path=video_path,
-            dry_run=dry_run,
-        )
+            # 投稿実行
+            result = post_to_sns(
+                clip=clip,
+                platforms=platforms,
+                video_path=video_path,
+                dry_run=dry_run,
+            )
 
-        # DB 更新 (非dry-run の場合のみ)
-        status = result.get("overall_status", "failed")
-        if not dry_run and status in ("posted", "partial"):
-            mark_posted(conn, clip_id)
-            summary["posted"] += 1
-        elif dry_run:
-            summary["posted"] += 1  # dry-run は全件カウント
-        else:
-            summary["failed"] += 1
+            # DB 更新: 投稿成功時のみコミット（トランザクション整合性）
+            status = result.get("overall_status", "failed")
+            if not dry_run and status in ("posted", "partial"):
+                try:
+                    mark_posted(conn, clip_id)
+                    summary["posted"] += 1
+                    logger.info(f"DB更新完了: {clip_id} -> posted")
+                except Exception as db_err:
+                    logger.error(f"DB更新失敗: {clip_id}: {db_err}")
+                    summary["failed"] += 1
+            elif dry_run:
+                summary["posted"] += 1  # dry-run は全件カウント
+            else:
+                summary["failed"] += 1
 
-        summary["results"].append({
-            "clip_id": clip_id,
-            "title": title,
-            "priority": clip.get("_priority", 0),
-            "post_result": result,
-        })
+            summary["results"].append({
+                "clip_id": clip_id,
+                "title": title,
+                "priority": clip.get("_priority", 0),
+                "post_result": result,
+            })
+    finally:
+        conn.close()
 
-    conn.close()
     return summary
 
 

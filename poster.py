@@ -141,9 +141,11 @@ class XPoster:
             )
             return result
 
-        # Validate credentials
-        if not all([self.api_key, self.api_secret, self.access_token, self.access_secret]):
-            logger.error("[X] APIキーが未設定です。環境変数を確認してください。")
+        # Validate credentials (空白のみも未設定とみなす)
+        if not _validate_credentials(
+            self.api_key, self.api_secret, self.access_token, self.access_secret,
+            label="X"
+        ):
             result["status"] = "failed"
             result["error"] = "APIキーが未設定"
             return result
@@ -249,9 +251,8 @@ class InstagramPoster:
             )
             return result
 
-        # Validate credentials
-        if not self.access_token or not self.account_id:
-            logger.error("[Instagram] APIキーが未設定です。環境変数を確認してください。")
+        # Validate credentials (空白のみも未設定とみなす)
+        if not _validate_credentials(self.access_token, self.account_id, label="Instagram"):
             result["status"] = "failed"
             result["error"] = "APIキーが未設定"
             return result
@@ -392,3 +393,29 @@ def post_to_sns(
             response["overall_status"] = "failed"
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# Credential validation helper
+# ---------------------------------------------------------------------------
+
+def _validate_credentials(*creds: str, label: str = "API") -> bool:
+    """
+    認証情報が全て設定済みかチェックする。
+    空文字列・空白のみの文字列は未設定とみなす。
+
+    Args:
+        *creds: 検証する認証情報文字列。
+        label: ログ出力用のラベル。
+
+    Returns:
+        全て設定済みなら True、未設定項目があれば False。
+    """
+    missing_count = sum(1 for c in creds if not c or not c.strip())
+    if missing_count > 0:
+        logger.error(
+            f"[{label}] {missing_count}/{len(creds)} 個の認証情報が未設定です。"
+            f" 環境変数を確認してください。"
+        )
+        return False
+    return True
