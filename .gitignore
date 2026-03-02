@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+downloads/
+clips.json
+*.mp4
+posted.db
+.env
